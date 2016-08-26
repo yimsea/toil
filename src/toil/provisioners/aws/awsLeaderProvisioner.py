@@ -14,7 +14,7 @@
 # limitations under the License.
 import argparse
 
-from boto.exception import EC2ResponseError
+from boto.exception import EC2ResponseError, BotoServerError
 
 try:
     import boto
@@ -24,12 +24,23 @@ except ImportError:
 from boto.ec2.connection import EC2Connection
 from boto.iam import IAMConnection
 from toil.provisioners.aws import AWSUserData
+from cgcloud.lib.context import Context
+
 coreOSAMI='ami-14589274'
+
+ec2_full_policy = dict( Version="2012-10-17", Statement=[
+    dict( Effect="Allow", Resource="*", Action="ec2:*" ) ] )
+
+s3_full_policy = dict( Version="2012-10-17", Statement=[
+    dict( Effect="Allow", Resource="*", Action="s3:*" ) ] )
+
+sdb_full_policy = dict( Version="2012-10-17", Statement=[
+    dict( Effect="Allow", Resource="*", Action="sdb:*" ) ] )
 
 # flag for instance types, region, key_name
 
 
-def getLeaderProfileName():
+def getLeaderProfileName(ctx):
     """
     """
     policy = """
@@ -43,41 +54,69 @@ def getLeaderProfileName():
     }
     """
 
-    iam = IAMConnection()
     roleName='toil-leader-role'
     profileName='toil-leader-profile'
     policyName="toil-leader-policy"
-    # we want to create IAM role for leader since we have that ability now
-    # full access to ec2, s3, iam, simpleDB  -  check in cgcloud
+    awsInstanceProfileName = roleName+'-instance'
+    policy = {}
+    policy.update( dict(
+        toil_iam_pass_role=dict(
+            Version="2012-10-17",
+            Statement=[
+                dict( Effect="Allow", Resource="*", Action="iam:PassRole" ) ] ),
+        ec2_full=ec2_full_policy,
+        s3_full=s3_full_policy,
+        sbd_full=sdb_full_policy,
+        ec2_toil_box=dict( Version="2012-10-17", Statement=[
+        dict( Effect="Allow", Resource="*", Action="ec2:CreateTags" ),
+        dict( Effect="Allow", Resource="*", Action="ec2:CreateVolume" ),
+        dict( Effect="Allow", Resource="*", Action="ec2:AttachVolume" ) ] ) ) )
+
+    profileName = ctx.setup_iam_ec2_role(role_name=roleName, policies=policy)
     try:
-        #get existing profile
-        pass
-    except:
-        instance_profile = iam.create_instance_profile(profileName)
-        role = iam.create_role(roleName)
-        iam.add_role_to_instance_profile(instance_profile_name=profileName,
-                                         role_name=roleName)
-        iam.put_role_policy(role_name=roleName, policy_name=policyName,
-                            policy_document=policy)
-    return profileName
+        profile = ctx.iam.get_instance_profile(awsInstanceProfileName)
+    except BotoServerError as e:
+        if e.status == 404:
+            profile = ctx.iam.create_instance_profile( awsInstanceProfileName )
+            profile = profile.create_instance_profile_response.create_instance_profile_result
+        else:
+            raise
+    else:
+        profile = profile.get_instance_profile_response.get_instance_profile_result
+
+    profile = profile.instance_profile
+    profile_arn = profile.arn
+
+    if len( profile.roles ) > 1:
+            raise RuntimeError( 'Did not expect profile to contain more than one role' )
+    elif len( profile.roles ) == 1:
+        # this should be profile.roles[0].role_name
+        if profile.roles.member.role_name == roleName:
+            return profile_arn
+        else:
+            ctx.iam.remove_role_from_instance_profile( awsInstanceProfileName,
+                                                            profile.roles.member.role_name )
+
+    ctx.iam.add_role_to_instance_profile( awsInstanceProfileName, roleName )
+
+    return profile_arn
 
 
-def getSecurityGroupName():
+def getSecurityGroupName(ctx):
     """
 
     :return:
     """
     name = 'toil-appliance-group'
     # security group create/get. standard + all ports open within the group
-    ec2 = EC2Connection()
     try:
-        web = ec2.create_security_group(name, 'Toil appliance security group')
+        web = ctx.ec2.create_security_group(name, 'Toil appliance security group')
         # open port 22 for ssh-ing
         web.authorize(ip_protocol='tcp', from_port=22, to_port=22, cidr_ip='0.0.0.0/0')
         # the following authorizes all port access within the web security group
         web.authorize(ip_protocol='tcp', from_port=0, to_port=9000, src_group=web)
     except EC2ResponseError:
-        web = ec2.get_all_security_groups(groupnames=[name])[0]
+        web = ctx.ec2.get_all_security_groups(groupnames=[name])[0]
     return name
 
 
@@ -87,18 +126,19 @@ def launchInstance(type, keyName):
     :param type:
     :return:
     """
-    profileName=getLeaderProfileName()
-    securityName=getSecurityGroupName()
-    ec2 = EC2Connection()
-    ec2.run_instances(image_id=coreOSAMI, security_groups=[securityName], instance_type=type,
-                      instance_profile_name=profileName, key_name=keyName, user_data=AWSUserData
+    nameSpace = '/'+keyName.split('@')[0]+'/'
+    ctx = Context(availability_zone='us-west-2a', namespace=nameSpace)
+    profileARN=getLeaderProfileName(ctx)
+    securityName=getSecurityGroupName(ctx)
+    ctx.ec2.run_instances(image_id=coreOSAMI, security_groups=[securityName], instance_type=type,
+                      instance_profile_arn=profileARN, key_name=keyName, user_data=AWSUserData
                       )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('--type', dest='type',
-                        help='Instance type to launch')
-    parser.add_argument('--keyName', dest='keyName',
+    parser.add_argument('--type', dest='type', required=True,
+                        help='EC2 instance type to launch')
+    parser.add_argument('--keyName', dest='keyName', required=True,
                         help='Name of the AWS key pair to include on the instance')
 
     args = parser.parse_args()
