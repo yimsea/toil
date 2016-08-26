@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import argparse
+
 from boto.exception import EC2ResponseError
 
 try:
@@ -21,10 +23,9 @@ except ImportError:
 
 from boto.ec2.connection import EC2Connection
 from boto.iam import IAMConnection
-
+from toil.provisioners.aws import AWSUserData
 coreOSAMI='ami-14589274'
-userData=''
-keyName='cketchum@ucsc.edu'
+
 # flag for instance types, region, key_name
 
 
@@ -33,10 +34,12 @@ def getLeaderProfileName():
     """
     policy = """
     {
-        "Statement":[{
-        "Effect":"Allow",
-        "Action":["s3:*", "ec2:*", "sdb:*"],
-        "Resource":"*"}]
+        "Statement":
+        [{
+            "Effect":"Allow",
+            "Action":["s3:*", "ec2:*", "sdb:*"],
+            "Resource":"*"
+        }]
     }
     """
 
@@ -78,7 +81,7 @@ def getSecurityGroupName():
     return name
 
 
-def launchInstance(type):
+def launchInstance(type, keyName):
     """
 
     :param type:
@@ -88,11 +91,19 @@ def launchInstance(type):
     securityName=getSecurityGroupName()
     ec2 = EC2Connection()
     ec2.run_instances(image_id=coreOSAMI, security_groups=[securityName], instance_type=type,
-                      instance_profile_name=profileName, key_name=keyName, user_data=userData
+                      instance_profile_name=profileName, key_name=keyName, user_data=AWSUserData
                       )
 
 if __name__ == '__main__':
-    launchInstance('t2.micro')
+    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser.add_argument('--type', dest='type',
+                        help='Instance type to launch')
+    parser.add_argument('--keyName', dest='keyName',
+                        help='Name of the AWS key pair to include on the instance')
+
+    args = parser.parse_args()
+
+    launchInstance(type=args.type, keyName=args.keyName)
 
 # almost same user data as workers- how do stay DRY here? String formatting? I think yes.
 
