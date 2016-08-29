@@ -36,8 +36,8 @@ write_files:
         done
         if (("$ephemeral_count" == "0" )); then
             echo no ephemeral drive
-            for drive in $drives; do
-                sudo mkdir -p /var/lib/$drive
+            for directory in $directories; do
+                sudo mkdir -p /var/lib/$directory
             done
             exit 0
         fi
