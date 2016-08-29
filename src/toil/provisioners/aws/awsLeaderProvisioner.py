@@ -26,7 +26,7 @@ from boto.iam import IAMConnection
 from toil.provisioners.aws import AWSUserData
 from cgcloud.lib.context import Context
 
-coreOSAMI='ami-14589274'
+coreOSAMI = 'ami-14589274'
 
 ec2_full_policy = dict( Version="2012-10-17", Statement=[
     dict( Effect="Allow", Resource="*", Action="ec2:*" ) ] )
@@ -144,6 +144,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     launchInstance(type=args.type, keyName=args.keyName)
-
-# almost same user data as workers- how do stay DRY here? String formatting? I think yes.
-
