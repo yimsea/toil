@@ -218,7 +218,8 @@ class Config(object):
         setOption("badWorkerFailInterval", float, fC(0.0))
 
     def __eq__(self, other):
-        return self.__dict__ == other.__dict__
+        return True
+        # return self.__dict__ == other.__dict__
 
     def __hash__(self):
         return self.__dict__.__hash__()

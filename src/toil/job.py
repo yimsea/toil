@@ -94,10 +94,16 @@ class Job(object):
         self._config = None
 
     @property
-    @memoize
     def disk(self):
-        assert self._config or self._disk
-        return self._disk if self._disk is not None else self.effectiveRequirements(self._config).defaultDisk
+        return self._disk if self._disk is not None else self._config.defaultDisk
+
+    @property
+    def memory(self):
+        return self._memory if self._memory is not None else self._config.defaultMemory
+
+    @property
+    def cores(self):
+        return self._cores if self._cores is not None else self._config.defaultCores
 
     @staticmethod
     def _parseResource(name, value):
@@ -561,12 +567,24 @@ class Job(object):
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
-            self.memory = memory
-            self.cores = cores
-            self.disk = disk
+            self._memory = memory
+            self._cores = cores
+            self._disk = disk
             self._childServices = []
             self._hasParent = False
             self.preemptable = preemptable
+
+            @property
+            def disk(self):
+                return self._disk if self._disk is not None else self._config.defaultDisk
+
+            @property
+            def memory(self):
+                return self._memory if self._memory is not None else self._config.defaultMemory
+
+            @property
+            def cores(self):
+                return self._cores if self._cores is not None else self._config.defaultCores
 
         @abstractmethod
         def start(self, fileStore):
@@ -679,13 +697,7 @@ class Job(object):
             openFileStream = jobStore.readFileStream(pickleFile)
         with openFileStream as fileHandle:
             job = cls._unpickle(userModule, fileHandle)
-            resources = job.effectiveRequirements(jobStore.config)
-            if job.cores is None:
-                job.cores = resources.cores
-            if job.disk is None:
-                job.disk = resources.disk
-            if job.memory is None:
-                job.memory = resources.memory
+            job._config = jobStore.config
             return job
 
     @classmethod
@@ -814,10 +826,12 @@ class Job(object):
         :rtype: Expando
         :return: a dictionary/object hybrid with one entry/attribute for each requirement
         """
+        if self._config is None:
+            self._config = config
         requirements = Expando(
-            memory=float(config.defaultMemory) if self.memory is None else self.memory,
-            cores=float(config.defaultCores) if self.cores is None else self.cores,
-            disk=float(config.defaultDisk) if self.disk is None else self.disk,
+            memory=self.memory,
+            cores=self.cores,
+            disk=self.disk,
             preemptable=config.defaultPreemptable if self.preemptable is None else self.preemptable)
         return requirements
 
