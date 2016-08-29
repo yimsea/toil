@@ -30,6 +30,7 @@ from argparse import ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
 
+from bd2k.util import memoize
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
 from toil.common import Toil, addOptions
@@ -63,9 +64,9 @@ class Job(object):
         :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
         """
-        self.cores = self._parseResource('cores', cores)
-        self.memory = self._parseResource('memory', memory)
-        self.disk = self._parseResource('disk', disk)
+        self._cores = self._parseResource('cores', cores)
+        self._memory = self._parseResource('memory', memory)
+        self._disk = self._parseResource('disk', disk)
         self.checkpoint = checkpoint
         self.preemptable = preemptable
         #Private class variables
@@ -90,6 +91,13 @@ class Job(object):
         # entire return value.
         self._rvs = collections.defaultdict(list)
         self._promiseJobStore = None
+        self._config = None
+
+    @property
+    @memoize
+    def disk(self):
+        assert self._config or self._disk
+        return self._disk if self._disk is not None else self.effectiveRequirements(self._config).defaultDisk
 
     @staticmethod
     def _parseResource(name, value):
