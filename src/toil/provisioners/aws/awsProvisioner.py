@@ -11,8 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import time
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
+from cgcloud.lib.ec2 import ec2_instance_types
+
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import AWSUserData
 from cgcloud.lib.context import Context
@@ -32,34 +35,48 @@ sdb_full_policy = dict( Version="2012-10-17", Statement=[
 
 class AWSProvisioner(AbstractProvisioner):
 
-    def __init__(self):
+    def __init__(self, config, batchSystem):
         # Do we have to delete instance profiles? What about security group?
         self.ctx = Context(availability_zone='us-west-2a', namespace='/')
         self.securityGroupName = get_instance_metadata()['security-groups'][0]
-
+        self.instanceType = ec2_instance_types[config.nodeType]
 
     def setNodeCount(self, numNodes, preemptable=False, force=False):
-        # methods:
-        # determine number of ephemeral drives via cgcloud-lib
-        bdt = BlockDeviceType()
-        # bdd = {'/dev/xvdb'} etc....
-        bdm = BlockDeviceMapping()
+
         # get all nodes in cluster
         instances = self._getAllNodesInCluster()
         # get security group
-        SGName = self.getSecurityGroupName(self.ctx)
-        intancesToLaunch = len(instances) - numNodes
-        for instance in intancesToLaunch:
-            id = 'xxxxxxx' # uuid?
-            arn = self.getProfileARN(self.ctx, instanceID=id)
-            #launch
+        instancesToLaunch = numNodes- len(instances)
+        if instancesToLaunch > 0:
+            # determine number of ephemeral drives via cgcloud-lib
+            bdtKeys = ['/dev/xvdc', '/dev/xvdd']
+            bdmDict = {}
+            for disk in range(2, self.instanceType.disks):
+                bdmDict[bdtKeys[disk-2]] = BlockDeviceType(ephemeral_name='ephemeral{}'.format(disk - 1))
 
+            bdm = BlockDeviceMapping()
+            for key, value in bdmDict.items():
+                bdm[key] = value
+
+            id = str(time.time())
+            arn = self.getProfileARN(self.ctx, instanceID=id)
+            # get key name
+            self.ctx.ec2.run_instances(image_id=coreOSAMI, min_count=instancesToLaunch, max_count= instancesToLaunch,
+                                       security_groups=[self.securityGroupName], instance_type=self.instanceType.name,
+                                       instance_profile_arn=arn, user_data=AWSUserData)
+
+        elif instancesToLaunch < 0:
+            # remove
+            pass
+        else:
+            pass
         pass
 
     def getNodeShape(self, preemptable=False):
         pass
 
     def _getAllNodesInCluster(self):
+        # use security group!!!
         return self.ctx.ec2.get_only_instances(filters={
             'tag:leader_instance_id': self._instanceId, # instead do AMI ID? > Our launch time?
             'instance-state-name': 'running'})
@@ -69,14 +86,14 @@ class AWSProvisioner(AbstractProvisioner):
         nameSpace = '/'+keyName.split('@')[0]+'/'
         ctx = Context(availability_zone='us-west-2a', namespace=nameSpace)
         profileARN = AWSProvisioner.getProfileARN(ctx, instanceID='leader')
-        securityName = AWSProvisioner.getSecurityGroupName(ctx)
+        securityName = AWSProvisioner.getSecurityGroupName(ctx, keyName)
 
         ctx.ec2.run_instances(image_id=coreOSAMI, security_groups=[securityName], instance_type=instanceType,
                               instance_profile_arn=profileARN, key_name=keyName, user_data=AWSUserData)
 
     @staticmethod
-    def getSecurityGroupName(ctx):
-        name = 'toil-appliance-group' # fixme: should be uuid
+    def getSecurityGroupName(ctx, keyName):
+        name = 'toil-appliance-group-'+keyName # fixme: should be uuid
         # security group create/get. standard + all ports open within the group
         try:
             web = ctx.ec2.create_security_group(name, 'Toil appliance security group')
