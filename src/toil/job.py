@@ -574,17 +574,17 @@ class Job(object):
             self._hasParent = False
             self.preemptable = preemptable
 
-            @property
-            def disk(self):
-                return self._disk if self._disk is not None else self._config.defaultDisk
+        @property
+        def disk(self):
+            return self._disk if self._disk is not None else self._config.defaultDisk
 
-            @property
-            def memory(self):
-                return self._memory if self._memory is not None else self._config.defaultMemory
+        @property
+        def memory(self):
+            return self._memory if self._memory is not None else self._config.defaultMemory
 
-            @property
-            def cores(self):
-                return self._cores if self._cores is not None else self._config.defaultCores
+        @property
+        def cores(self):
+            return self._cores if self._cores is not None else self._config.defaultCores
 
         @abstractmethod
         def start(self, fileStore):
