@@ -15,8 +15,11 @@ import time
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from cgcloud.lib.ec2 import ec2_instance_types
+from itertools import islice
 
+from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
+from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
 from toil.provisioners.aws import AWSUserData
 from cgcloud.lib.context import Context
 from boto.utils import get_instance_metadata
@@ -40,6 +43,7 @@ class AWSProvisioner(AbstractProvisioner):
         self.ctx = Context(availability_zone='us-west-2a', namespace='/')
         self.securityGroupName = get_instance_metadata()['security-groups'][0]
         self.instanceType = ec2_instance_types[config.nodeType]
+        self.batchSystem = batchSystem
 
     def setNodeCount(self, numNodes, preemptable=False, force=False):
 
@@ -66,9 +70,9 @@ class AWSProvisioner(AbstractProvisioner):
                                        instance_profile_arn=arn, user_data=AWSUserData)
 
         elif instancesToLaunch < 0:
-            # remove
-            pass
+            self._removeNodes(instances=instances, numNodes=numNodes, preemptable=preemptable, force=force)
         else:
+            # Do nothing! Yay!
             pass
         pass
 
@@ -148,3 +152,38 @@ class AWSProvisioner(AbstractProvisioner):
                                                                 profile.roles.member.role_name )
         ctx.iam.add_role_to_instance_profile( awsInstanceProfileName, roleName )
         return profile_arn
+
+    def _removeNodes(self, instances, numNodes, preemptable=False, force=False):
+        # If the batch system is scalable, we can use the number of currently running workers on
+        # each node as the primary criterion to select which nodes to terminate.
+        if isinstance(self.batchSystem, AbstractScalableBatchSystem):
+            nodes = self.batchSystem.getNodes(preemptable)
+            # Join nodes and instances on private IP address.
+            nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
+            # Unless forced, exclude nodes with runnning workers. Note that it is possible for
+            # the batch system to report stale nodes for which the corresponding instance was
+            # terminated already. There can also be instances that the batch system doesn't have
+            # nodes for yet. We'll ignore those, too, unless forced.
+            nodes = [(instance, nodeInfo)
+                     for instance, nodeInfo in nodes
+                     if force or nodeInfo is not None and nodeInfo.workers < 1]
+            # Sort nodes by number of workers and time left in billing cycle
+            nodes.sort(key=lambda (instance, nodeInfo): (
+                nodeInfo.workers if nodeInfo else 1,
+                CGCloudProvisioner._remainingBillingInterval(instance)))
+            nodes = nodes[:numNodes]
+            # if log.isEnabledFor(logging.DEBUG):
+            #     for instance, nodeInfo in nodes:
+            #         log.debug("Instance %s is about to be terminated. Its node info is %r. It "
+            #                   "would be billed again in %s minutes.", instance.id, nodeInfo,
+            #                   60 * CGCloudProvisioner._remainingBillingInterval(instance))
+            instanceIds = [instance.id for instance, nodeInfo in nodes]
+        else:
+            # Without load info all we can do is sort instances by time left in billing cycle.
+            instances = sorted(instances,
+                               key=lambda instance: (CGCloudProvisioner._remainingBillingInterval(instance)))
+            instanceIds = [instance.id for instance in islice(instances, numNodes)]
+        # log.info('Terminating %i instance(s).', len(instanceIds))
+        if instanceIds:
+            self.ctx.ec2.terminate_instances(instance_ids=instanceIds)
+        return len(instanceIds)

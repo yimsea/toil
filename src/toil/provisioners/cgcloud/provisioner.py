@@ -228,7 +228,8 @@ class CGCloudProvisioner(AbstractProvisioner):
             log.warn('Batch system is not scalable. Assuming all instances joined the cluster.')
         return numInstancesAdded
 
-    def _partialBillingInterval(self, instance):
+    @staticmethod
+    def _partialBillingInterval(instance):
         """
         Returns a floating point value between 0 and 1.0 representing how far we are into the
         current billing cycle for the given instance. If the return value is .25, we are one
@@ -275,8 +276,9 @@ class CGCloudProvisioner(AbstractProvisioner):
             self._logAndTerminate(instanceIds)
         return len(instanceIds)
 
-    def _remainingBillingInterval(self, instance):
-        return 1.0 - self._partialBillingInterval(instance)
+    @staticmethod
+    def _remainingBillingInterval(instance):
+        return 1.0 - CGCloudProvisioner._partialBillingInterval(instance)
 
     def _logAndTerminate(self, instanceIds):
         log.debug('IDs of terminated instances: %r', instanceIds)
