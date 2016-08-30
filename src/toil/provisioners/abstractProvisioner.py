@@ -75,3 +75,9 @@ class AbstractProvisioner(object):
         :rtype: Shape
         """
         raise NotImplementedError
+
+    @staticmethod
+    @abstractmethod
+    def launchLeaderInstance(instanceType, keyName):
+        raise NotImplementedError
+
