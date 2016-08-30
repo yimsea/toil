@@ -11,10 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import AWSUserData
 from cgcloud.lib.context import Context
+from boto.utils import get_instance_metadata
 
 
 coreOSAMI = 'ami-14589274'
@@ -30,21 +32,37 @@ sdb_full_policy = dict( Version="2012-10-17", Statement=[
 
 class AWSProvisioner(AbstractProvisioner):
 
+    def __init__(self):
+        # Do we have to delete instance profiles? What about security group?
+        self.ctx = Context(availability_zone='us-west-2a', namespace='/')
+        self.securityGroupName = get_instance_metadata()['security-groups'][0]
+
+
     def setNodeCount(self, numNodes, preemptable=False, force=False):
         # methods:
-        # get IAM role
+        # determine number of ephemeral drives via cgcloud-lib
+        bdt = BlockDeviceType()
+        # bdd = {'/dev/xvdb'} etc....
+        bdm = BlockDeviceMapping()
+        # get all nodes in cluster
+        instances = self._getAllNodesInCluster()
         # get security group
-        # do block device mapping
-        # For node in numNodes:
-        #  get iam role
-        #  pass group name
-        #  do mapping
-        #  launch with user data
-        #
+        SGName = self.getSecurityGroupName(self.ctx)
+        intancesToLaunch = len(instances) - numNodes
+        for instance in intancesToLaunch:
+            id = 'xxxxxxx' # uuid?
+            arn = self.getProfileARN(self.ctx, instanceID=id)
+            #launch
+
         pass
 
     def getNodeShape(self, preemptable=False):
         pass
+
+    def _getAllNodesInCluster(self):
+        return self.ctx.ec2.get_only_instances(filters={
+            'tag:leader_instance_id': self._instanceId, # instead do AMI ID? > Our launch time?
+            'instance-state-name': 'running'})
 
     @staticmethod
     def launchLeaderInstance(instanceType, keyName):
@@ -58,7 +76,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     @staticmethod
     def getSecurityGroupName(ctx):
-        name = 'toil-appliance-group'
+        name = 'toil-appliance-group' # fixme: should be uuid
         # security group create/get. standard + all ports open within the group
         try:
             web = ctx.ec2.create_security_group(name, 'Toil appliance security group')
