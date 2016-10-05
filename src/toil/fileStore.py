@@ -60,9 +60,9 @@ class FileStore(object):
     _jobStoreFileIDToCacheLocation = {}
     _terminateEvent = Event()  # Used to signify crashes in threads
 
-    def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
+    def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
         self.jobStore = jobStore
-        self.jobWrapper = jobWrapper
+        self.jobGraph = jobGraph
         self.localTempDir = os.path.abspath(localTempDir)
         self.inputBlockFn = inputBlockFn
         self.loggingMessages = []
@@ -79,7 +79,7 @@ class FileStore(object):
             worker.start()
         # Variables related to caching
         # cacheDir has to be 1 levels above local worker tempdir, at the same level as the
-        # worker dirs. At this point, localTempDir is the worker directory, not the jobwrapper
+        # worker dirs. At this point, localTempDir is the worker directory, not the job
         # directory.
         self.localTempDir = localTempDir
         self.localCacheDir = os.path.join(os.path.dirname(localTempDir),
@@ -90,7 +90,7 @@ class FileStore(object):
         # a time on a worker, we can bookkeep the job's file store operated files in a
         # dictionary.
         self.jobSpecificFiles = {}
-        self.jobName = self.jobWrapper.command.split()[1]
+        self.jobName = self.jobGraph.command.split()[1]
         self.jobID = sha1(self.jobName).hexdigest()
         logger.info('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
         # A variable to describe how many hard links an unused file in the cache will have.
@@ -103,9 +103,9 @@ class FileStore(object):
         self._setupCache()
 
     @staticmethod
-    def createFileStore(jobStore, jobWrapper, localTempDir, inputBlockFn, caching):
+    def createFileStore(jobStore, jobGraph, localTempDir, inputBlockFn, caching):
         fileStoreCls = FileStore if caching else NonCachingFileStore
-        return fileStoreCls(jobStore, jobWrapper, localTempDir, inputBlockFn)
+        return fileStoreCls(jobStore, jobGraph, localTempDir, inputBlockFn)
 
     @contextmanager
     def open(self, job):
@@ -203,7 +203,7 @@ class FileStore(object):
         """
         absLocalFileName = self._abspath(localFileName)
         # What does this do?
-        cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
+        cleanupID = None if not cleanup else self.jobGraph.jobStoreID
         # If the file is from the scope of local temp dir
         if absLocalFileName.startswith(self.localTempDir):
             # If the job store is of type FileJobStore and the job store and the local temp dir
@@ -273,7 +273,7 @@ class FileStore(object):
         """
         # TODO: Make this work with the caching??
         # TODO: Make this work with FileID
-        return self.jobStore.writeFileStream(None if not cleanup else self.jobWrapper.jobStoreID)
+        return self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
         """
@@ -1365,10 +1365,10 @@ class FileStore(object):
 
                 # Indicate any files that should be deleted once the update of
                 # the job wrapper is completed.
-                self.jobWrapper.filesToDelete = list(self.filesToDelete)
+                self.jobGraph.filesToDelete = list(self.filesToDelete)
 
                 # Complete the job
-                self.jobStore.update(self.jobWrapper)
+                self.jobStore.update(self.jobGraph)
 
                 # Delete any remnant jobs
                 map(self.jobStore.delete, self.jobsToDelete)
@@ -1378,9 +1378,9 @@ class FileStore(object):
 
                 # Remove the files to delete list, having successfully removed the files
                 if len(self.filesToDelete) > 0:
-                    self.jobWrapper.filesToDelete = []
+                    self.jobGraph.filesToDelete = []
                     # Update, removing emptying files to delete
-                    self.jobStore.update(self.jobWrapper)
+                    self.jobStore.update(self.jobGraph)
             except:
                 self._terminateEvent.set()
                 raise
@@ -1389,7 +1389,7 @@ class FileStore(object):
                 # This code will always run
                 self.updateSemaphore.release()
 
-        # The update semaphore is held while the jobWrapper is written to disk
+        # The update semaphore is held while the job is writen to the job store
         try:
             self.updateSemaphore.acquire()
             t = Thread(target=asyncUpdate)
@@ -1426,9 +1426,9 @@ class FileStore(object):
 
 class NonCachingFileStore(FileStore):
 
-    def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
+    def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
         self.jobStore = jobStore
-        self.jobWrapper = jobWrapper
+        self.jobGraph = jobGraph
         self.localTempDir = os.path.abspath(localTempDir)
         self.inputBlockFn = inputBlockFn
         self.jobsToDelete = set()
@@ -1448,7 +1448,7 @@ class NonCachingFileStore(FileStore):
 
     def writeGlobalFile(self, localFileName, cleanup=False):
         absLocalFileName = self._abspath(localFileName)
-        cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
+        cleanupID = None if not cleanup else self.jobGraph.jobStoreID
         return FileID.forPath(self.jobStore.writeFile(absLocalFileName, cleanupID), absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
@@ -1495,18 +1495,18 @@ class NonCachingFileStore(FileStore):
         try:
             # Indicate any files that should be deleted once the update of
             # the job wrapper is completed.
-            self.jobWrapper.filesToDelete = list(self.filesToDelete)
+            self.jobGraph.filesToDelete = list(self.filesToDelete)
             # Complete the job
-            self.jobStore.update(self.jobWrapper)
+            self.jobStore.update(self.jobGraph)
             # Delete any remnant jobs
             map(self.jobStore.delete, self.jobsToDelete)
             # Delete any remnant files
             map(self.jobStore.deleteFile, self.filesToDelete)
             # Remove the files to delete list, having successfully removed the files
             if len(self.filesToDelete) > 0:
-                self.jobWrapper.filesToDelete = []
+                self.jobGraph.filesToDelete = []
                 # Update, removing emptying files to delete
-                self.jobStore.update(self.jobWrapper)
+                self.jobStore.update(self.jobGraph)
         except:
             self._terminateEvent.set()
             raise
