@@ -563,8 +563,8 @@ class AbstractJobStore(object):
             jobGraph.services = filter(
                 lambda z: len(z) > 0,
                 map(lambda serviceJobList:
-                    map(fn,
-                        filter(lambda y: self.exists(y.jobStoreID), serviceJobList)), jobGraph.services))
+                    filter(lambda x: x is not None, map(fn,
+                        filter(lambda y: self.exists(y.jobStoreID), serviceJobList))), jobGraph.services))
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 

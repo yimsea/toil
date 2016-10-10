@@ -601,10 +601,10 @@ class ServiceManager( object ):
         :param dict services: Maps service jobStoreIDs to the communication flags for the service
         """
         for serviceJobStoreID in services:
-            startJobStoreID, terminateJobStoreID, errorJobStoreID = services[serviceJobStoreID]
+            serviceJob = services[serviceJobStoreID]
             if error:
-                self.jobStore.deleteFile(errorJobStoreID)
-            self.jobStore.deleteFile(terminateJobStoreID)
+                self.jobStore.deleteFile(serviceJob.errorJobStoreID)
+            self.jobStore.deleteFile(serviceJob.terminateJobStoreID)
 
     def check(self):
         """
