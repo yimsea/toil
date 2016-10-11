@@ -870,7 +870,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                             #Load the wrapped jobGraph
                             job2 = jobStore.load(successorJobStoreID)
                             #Remove the predecessor from the list of predecessors
-                            job2.predecessorsFinished.add(jobNode.jobStoreID)
+                            job2.predecessorsFinished.add(jobGraph.jobStoreID)
                             #Checkpoint
                             jobStore.update(job2)
                             #If the jobs predecessors have all not all completed then
