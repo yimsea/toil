@@ -459,7 +459,7 @@ class AbstractJobStore(object):
                 return
             reachableFromRoot.add(jobGraph.jobStoreID)
             # Traverse jobs in stack
-            for job in jobGraph.stack:
+            for job in jobGraph.stack[-1]:
                 if (job.jobStoreID not in reachableFromRoot
                     and haveJob(job.jobStoreID)):
                     getConnectedJobs(getJob(job.jobStoreID))
