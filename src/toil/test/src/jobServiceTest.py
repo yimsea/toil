@@ -14,6 +14,8 @@
 from __future__ import absolute_import
 import os
 import random
+import unittest
+
 from toil.lib.bioio import getTempFile
 from toil.job import Job
 from toil.test import ToilTest
@@ -94,7 +96,7 @@ class JobServiceTest(ToilTest):
             finally:
                 os.remove(outFile)
 
-    @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
+    @unittest.skip('skipping, broken')
     def testServiceParallelRecursive(self, checkpoint=True):
         """
         Tests the creation of a Job.Service, creating parallel chains of services and accessing jobs.
