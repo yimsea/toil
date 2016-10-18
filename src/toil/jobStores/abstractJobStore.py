@@ -556,15 +556,19 @@ class AbstractJobStore(object):
 
             servicesSizeFn = lambda: sum(map(len, jobGraph.services))
             startServicesSize = servicesSizeFn()
-            def fn(serviceJobNode):
+            def replaceFlagsIfNeeded(serviceJobNode):
                 serviceJobNode.startJobStoreID = subFlagFile(serviceJobNode.jobStoreID, serviceJobNode.startJobStoreID, 1)
                 serviceJobNode.terminateJobStoreID = subFlagFile(serviceJobNode.jobStoreID, serviceJobNode.terminateJobStoreID, 2)
                 serviceJobNode.errorJobStoreID = subFlagFile(serviceJobNode.jobStoreID, serviceJobNode.errorJobStoreID, 3)
-            jobGraph.services = filter(
-                lambda z: len(z) > 0,
-                map(lambda serviceJobList:
-                    filter(lambda x: x is not None, map(fn,
-                        filter(lambda y: self.exists(y.jobStoreID), serviceJobList))), jobGraph.services))
+
+            # jobGraph.services is a list of lists that contain serviceNodes
+            # remove all services that no longer exist
+            map(lambda serviceList: filter(lambda service: self.exists(service.jobStoreID), serviceList), jobGraph.services)
+            # remove all empty lists resulting from service removal
+            filter(None, jobGraph.services)
+            # apply the function to all remaining service nodes
+            map(lambda serviceList: map(replaceFlagsIfNeeded, serviceList), jobGraph.services)
+
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 

@@ -96,7 +96,7 @@ class JobServiceTest(ToilTest):
             finally:
                 os.remove(outFile)
 
-    @unittest.skip('skipping, broken')
+    @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
     def testServiceParallelRecursive(self, checkpoint=True):
         """
         Tests the creation of a Job.Service, creating parallel chains of services and accessing jobs.
