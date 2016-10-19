@@ -252,9 +252,9 @@ class hidden:
                 Job.Runner.startToil(A, self.options)
             except FailedJobsException as err:
                 self.assertEqual(err.numberOfFailedJobs, 1)
-                errType, errMsg = self._parseAssertionError(self.options.logFile)
-                if (errType == 'AssertionError' and
-                        errMsg == 'Unable to free up enough space for caching.'):
+                with open(self.options.logFile) as f:
+                    logContents = f.read()
+                if 'AssertionError: Unable to free up enough space for caching.' in logContents:
                     self.assertEqual(expectedResult, 'Fail')
                 else:
                     self.fail('Toil did not raise the expected AssertionError')
@@ -336,31 +336,6 @@ class hidden:
                     cacheInfoMB = getattr(cacheInfo, value)
                     assert cacheInfoMB == expectedMB, 'Testing %s: Expected ' % value + \
                                                       '%s but got %s.' % (expectedMB, cacheInfoMB)
-
-        @staticmethod
-        def _parseAssertionError(logFile):
-            """
-            Parse the assertion error message from a failed toil logfile
-
-            :param logFile: path to the logfile
-            :return: tuple of (error type, string) of the error
-            """
-            workerLogName = None
-            with open(logFile, 'r') as logFileHandle:
-                for line in logFileHandle:
-                    line = line.strip()
-                    if workerLogName is None:
-                        if line.startswith('The job seems to have left '
-                                           'a log file, indicating failure:'):
-                            workerLogName = line.split()[-1]
-                        continue
-                    if not line.startswith(workerLogName):
-                        continue
-                    else:
-                        fields = line.split()
-                        if fields[1].endswith('Error:'):
-                            return fields[1][:-1], ' '.join(fields[2:])
-            raise RuntimeError('An error was not found in the error log.')
 
         def testAsyncWriteWithCaching(self):
             """
