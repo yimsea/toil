@@ -303,7 +303,6 @@ class JobBatcher:
                 else:
                     raise
             if jobGraph.logJobStoreFileID is not None:
-                logger.warn("The job %s seems to have left a log file, indicating failure", issuedJob)
                 with jobGraph.getLogFileHandle( self.jobStore ) as logFileStream:
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
