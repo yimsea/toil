@@ -563,9 +563,11 @@ class AbstractJobStore(object):
 
             # jobGraph.services is a list of lists that contain serviceNodes
             # remove all services that no longer exist
-            map(lambda serviceList: filter(lambda service: self.exists(service.jobStoreID), serviceList), jobGraph.services)
+            def filterInPlace(serviceList, filterCondition):
+                serviceList = filter(filterCondition, serviceList)
+            map(lambda serviceList: filterInPlace(serviceList, lambda service: self.exists(service.jobStoreID)), jobGraph.services)
             # remove all empty lists resulting from service removal
-            filter(None, jobGraph.services)
+            filter(lambda serviceList: filterInPlace(serviceList, None), jobGraph.services)
             # apply the function to all remaining service nodes
             map(lambda serviceList: map(replaceFlagsIfNeeded, serviceList), jobGraph.services)
 
