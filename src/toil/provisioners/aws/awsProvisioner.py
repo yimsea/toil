@@ -82,11 +82,12 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     def sshLeader(cls, clusterName):
         leader = cls._getLeader(clusterName)
         logger.info('SSH ready')
-        cls._sshAppliance(leader.ip_address, 'bash')
+        cls._sshAppliance(leader.ip_address, 'bash', tty=True)
 
     @classmethod
-    def _sshAppliance(cls, leaderIP, command):
-        command = "ssh -o \"StrictHostKeyChecking=no\" -t core@%s \"docker exec -it leader %s\"" % (leaderIP, command)
+    def _sshAppliance(cls, leaderIP, command, tty=False):
+        ttyFlag = 't' if tty else ''
+        command = "ssh -o \"StrictHostKeyChecking=no\" -t core@%s \"docker exec -i%s leader %s\"" % (leaderIP, ttyFlag, command)
         return subprocess.check_call(command, shell=True)
 
     @classmethod
