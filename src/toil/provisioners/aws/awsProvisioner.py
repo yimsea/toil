@@ -86,7 +86,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def _sshAppliance(cls, leaderIP, command):
-        command = "ssh -o \"StrictHostKeyChecking=no\" -t core@%s \"docker exec -i leader %s\"" % (leaderIP, command)
+        command = "ssh -o \"StrictHostKeyChecking=no\" -t core@%s \"docker exec -it leader %s\"" % (leaderIP, command)
         return subprocess.check_call(command, shell=True)
 
     @classmethod
