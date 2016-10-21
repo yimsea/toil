@@ -91,22 +91,12 @@ coreos:
         [Unit]
         Description=mounts ephemeral volumes & bind mounts toil directories
         Author=cketchum@ucsc.edu
-        Before=docker.service
-
-        [Service]
-        Restart=on-failure
-        ExecStart=/usr/bin/bash /home/core/volumes.sh
-
-    - name: "toil-{role}.service"
-      command: "start"
-      content: |
-        [Unit]
-        Description=toil-{role} container
-        Author=cketchum@ucsc.edu
         After=docker.service
 
         [Service]
-        Restart=on-failure
-        ExecStart=/usr/bin/docker run --net=host -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/mesos:/var/lib/mesos -v /var/lib/docker:/var/lib/docker -v /var/lib/toil:/var/lib/toil --name={role} {repo}:{tag} {args}
+        Type=oneshot
+        Restart=no
+        ExecStart=/usr/bin/bash /home/core/volumes.sh
+        ExecStartPost=/usr/bin/docker run --net=host -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/mesos:/var/lib/mesos -v /var/lib/docker:/var/lib/docker -v /var/lib/toil:/var/lib/toil --name={role} {repo}:{tag} {args}
 
 """
