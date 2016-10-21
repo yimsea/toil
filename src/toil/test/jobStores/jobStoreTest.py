@@ -14,9 +14,11 @@
 
 from __future__ import absolute_import
 
+import SocketServer
 import hashlib
 import logging
-
+import threading
+import SimpleHTTPServer
 import os
 import shutil
 import tempfile
@@ -24,6 +26,7 @@ import time
 import urllib2
 import urlparse
 import uuid
+from stubserver import FTPStubServer
 from Queue import Queue
 from abc import abstractmethod, ABCMeta
 from itertools import chain, islice, count
@@ -454,17 +457,32 @@ class AbstractJobStoreTest:
                        otherCls=activeTestClassesByName)
 
         def testImportHttpFile(self):
-            srcUrl, srcHash = ('https://raw.githubusercontent.com/BD2KGenomics/toil'
-                               '/12c711ff91caa5d8fb37a072bad376f447faa797/Makefile',
-                               '16a38fd7ae233616083d43d81159d4e8')
-            with self.master.readFileStream(self.master.importFile(srcUrl)) as f:
-                self.assertEqual(hashlib.md5(f.read()).hexdigest(), srcHash)
+            httpd = SocketServer.TCPServer(('', 0), StubHttpServer)
+            httpdThread = threading.Thread(target=httpd.handle_request)
+            httpdThread.start()
+            try:
+                assignedPort = httpd.server_address[1]
+                url = 'http://localhost:%d' % assignedPort
+                with self.master.readFileStream(self.master.importFile(url)) as f:
+                    self.assertEqual(f.read(), StubHttpServer.fileContents)
+            finally:
+                try:
+                    httpd.server_close()
+                finally:
+                    httpdThread.join()
 
         def testImportFtpFile(self):
-            srcUrl, srcHash = ('ftp://speedtest.tele2.net/512KB.zip',
-                               '59071590099d21dd439896592338bf95')
-            with self.master.readFileStream(self.master.importFile(srcUrl)) as f:
-                self.assertEqual(hashlib.md5(f.read()).hexdigest(), srcHash)
+            file = {'name':'foo', 'content':'foo bar baz qux'}
+            ftpd = FTPStubServer(0)
+            ftpd.run()
+            try:
+                ftpd.add_file(**file)
+                assignedPort = ftpd.server.server_address[1]
+                url = 'ftp://user1:passwd@localhost:%d/%s' % (assignedPort, file['name'])
+                with self.master.readFileStream(self.master.importFile(url)) as f:
+                    self.assertEqual(f.read(), file['content'])
+            finally:
+                ftpd.stop()
 
         def testFileDeletion(self):
             """
@@ -1058,6 +1076,16 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Te
 @needs_encryption
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
+
+
+class StubHttpServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
+    fileContents = 'A good programmer looks both ways before crossing a one-way street'
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.send_header("Content-length", len(self.fileContents))
+        self.end_headers()
+        self.wfile.write(self.fileContents)
 
 
 AbstractJobStoreTest.Test.makeImportExportTests()
